@@ -1,15 +1,10 @@
-﻿//02102019 minesweeper game
+//minesweeper game
 #include<iostream>
-using namespace std;
 #include<conio.h>
 #include<iomanip>
 #include<Windows.h>
-
-/*
-ввел структуру Ячейка (cell), теперь игра построена на понятной логике без кодирования каждой операции,
-как было в предыдущей версии
-улучшена функция открытия ячейки, повторяющиеся действия выведены в отдельную функцию
-*/
+#include<math.h>
+using namespace std;
 
 struct cell
 {
@@ -18,6 +13,20 @@ struct cell
 	bool isFlag;
 	short content;
 };
+
+struct user
+{
+	short score;
+	short fieldSize;
+	char* nickname;
+	void showUser()
+	{
+		printf("User: %s Score: %d Size of field: %d x %d\n", nickname, score, fieldSize, fieldSize);
+	}
+};
+
+template<typename T>
+void retNum(T&, const T, const T);
 
 void createCell(cell*&);
 
@@ -36,51 +45,80 @@ void setHints(cell***, const int, const int);
 
 void showGameField(const cell* const* const* const, const int, const int, const int, const int, const int, int, const int);
 
-void makeUserMove(cell***, int&, int&, const int, const int, int&, int&, int&, int&, int&);
+void makeUserMove(cell***, int&, int&, const int, const int, int&, int&, int&, int&, int&, bool&);
 
 void openCell(cell***, const int, const int, const int, const int);
 
-void checkNearbyCells(cell***, const int, const int, const int, const int, const int, const int, const int, const int);
+void openNearbyCell(cell***, const int, const int, const int, const int, const int, const int);
 
 void addScore(int&, int&);
 
 bool winGame(cell const* const* const*, const int, const int);
 
+void gameGreeting();
+
+void showBoom();
+
+void showYouWin();
+
+bool offerSaveResult(const cell const* const* const*, const int, const int, const int, const int, const int, const int, const int);
+
+void saveUserScore(const int, const int);
+
 int main()
 {
+	system("mode con cols=80 lines=50");
+
 	int row{};
 	int col{};
-	int qttOfBombs{ 10 };
-	int qttOfFlags = qttOfBombs;
-	cout << "Enter size of game field (from 5 to 10): ";
-	cin >> row;
+
+	gameGreeting();
+
+	cout << setw(60) << "Enter size of game field (from 5 to 40): ";
+	retNum(row, 5, 40);
 	col = row;
+
+	int qttOfBombs{ row * 2 };
+	int qttOfFlags = qttOfBombs;
 
 	int qttOfMoves{ col * row };
 	int lifes{ 3 };
 	int score{};
-	int scoreCounter{-1};
+	int scoreCounter{ -1 };
+	bool openSavedGame{ false };
 
 	int x{ col / 2 }; //x and y are users coordinates for cursor
 	int y{ row / 2 };
 
-	cell*** gameField = new cell** [row] {};
+	cell*** gameField = new cell**[row] {};
 	createCellArr2D(gameField, row, col);
-	
+
 	setBombs(gameField, row, col, qttOfBombs);
 
 	setHints(gameField, row, col);
-	
+
 	while (true)
 	{
 		if (!qttOfMoves || !lifes || winGame(gameField, row, col)) break;
 		else
 		{
 			showGameField(gameField, x, y, row, col, qttOfMoves, lifes, score);
-			makeUserMove(gameField, x, y, row, col, qttOfMoves, lifes, score, scoreCounter, qttOfFlags);
+			makeUserMove(gameField, x, y, row, col, qttOfMoves, lifes, score, scoreCounter, qttOfFlags, openSavedGame);
 		}
-	}	
-	showGameField(gameField, x, y, row, col, qttOfMoves, lifes, score);
+	}
+
+	if (lifes && winGame(gameField, row, col))
+	{
+		if (offerSaveResult(gameField, x, y, row, col, qttOfMoves, lifes, score))
+		{
+			saveUserScore(score, row);
+		}
+	}
+	else
+	{
+		cout << endl;
+		cout << setw(45) << "You lose!" << endl;
+	}
 
 	deleteCellArr2D(gameField, row, col);
 
@@ -115,7 +153,7 @@ void createCellArr2D(cell***& arr, const int row, const int col)
 	{
 		if (!arr)
 		{
-			arr = new cell** [row] {};
+			arr = new cell * *[row] {};
 		}
 		else break;
 	}
@@ -127,7 +165,7 @@ void createCellArr2D(cell***& arr, const int row, const int col)
 			*(arr + i) = nullptr;
 			while (*(arr + i) == nullptr)
 			{
-				*(arr + i) = new cell* [col] {};
+				*(arr + i) = new cell * [col] {};
 				for (int j = 0; j < col; j++)
 				{
 					*(*(arr + i) + j) = nullptr;
@@ -145,10 +183,10 @@ void deleteCellArr2D(cell***& arr, const int row, const int col)
 		for (int i = 0; i < row; i++)
 		{
 			for (int j = 0; j < col; j++)
-			{				
+			{
 				deleteCell(*(*(arr + i) + j));
 			}
-			delete[] *(arr + i);
+			delete[] * (arr + i);
 		}
 		delete[] arr;
 		arr = nullptr;
@@ -263,31 +301,62 @@ void setHints(cell*** arr, const int row, const int col)
 
 void showGameField(const cell* const* const* const arr, const int x, const int y, const int row, const int col, const int qttOfMoves, int lifes, const int score)
 {
+	int fieldWidth = col;
 	system("cls");
+
+	cout << endl;;
+
 	for (int i = 0; i < row; i++)
 	{
+		if (i == 0)
+		{
+			cout << setw((80 - col) / 2) << (char)201;
+			while (fieldWidth--)
+			{
+				cout << (char)205;
+			}
+			cout << (char)187 << endl;
+			fieldWidth = col;
+		}
+
+
 		for (int j = 0; j < col; j++)
 		{
+			if (j == 0) cout << setw((80 - col) / 2) << (char)186;
 			if (i == y && j == x) cout << (char)206;
 			else if ((*(*(arr + i) + j))->isFlag) cout << (char)16;
 			else if (!(*(*(arr + i) + j))->isOpen) cout << (char)178;
 			else if ((*(*(arr + i) + j))->isOpen && !(*(*(arr + i) + j))->isBomb && (*(*(arr + i) + j))->content >= 1 && (*(*(arr + i) + j))->content <= 8) cout << (*(*(arr + i) + j))->content;
 			else if ((*(*(arr + i) + j))->isOpen && !(*(*(arr + i) + j))->isBomb && (*(*(arr + i) + j))->content == 0) cout << (char)0;
 			else if ((*(*(arr + i) + j))->isOpen && (*(*(arr + i) + j))->isBomb) cout << (char)15;
+			if (j == col - 1) cout << (char)186;
+		}
+
+		if (i == row - 1)
+		{
+			cout << endl;
+			cout << setw((80 - col) / 2) << (char)200;
+			while (fieldWidth--)
+			{
+				cout << (char)205;
+			}
+			cout << (char)188;
 		}
 		cout << endl;
 	}
 
-	cout << "Moves left: " << qttOfMoves;
-	cout << setw(20) << "Lifes left: ";
+	cout << endl;
+	cout << setw(32) << "Your score: " << score;
+	cout << "\t\tLifes left: ";
 	while (lifes--)
 	{
 		cout << (char)3;
 	}
-	cout << "\nYour score: " << score << endl;
+	cout << endl;
+	cout << setw(60) << "Moves left: " << qttOfMoves << endl;
 }
 
-void makeUserMove(cell*** arr, int& x, int& y, const int row, const int col, int& qttOfMoves, int& lifes, int& score, int& scoreCounter, int& qttOfFlags)
+void makeUserMove(cell*** arr, int& x, int& y, const int row, const int col, int& qttOfMoves, int& lifes, int& score, int& scoreCounter, int& qttOfFlags, bool& openSavedGame)
 {
 	char userMove{};
 	userMove = _getch();
@@ -329,7 +398,7 @@ void makeUserMove(cell*** arr, int& x, int& y, const int row, const int col, int
 			qttOfMoves--;
 			qttOfFlags++;
 		}
-		else if(qttOfFlags > 0)
+		else if (qttOfFlags > 0)
 		{
 			(*(*(arr + y) + x))->isFlag = true;
 			qttOfMoves--;
@@ -358,7 +427,8 @@ void makeUserMove(cell*** arr, int& x, int& y, const int row, const int col, int
 	}
 	break;
 
-	default: break;
+	default: cout << "Error! Wrong operation code!" << endl;
+	break;
 	}
 }
 
@@ -370,43 +440,45 @@ void openCell(cell*** arr, const int row, const int col, const int x, const int 
 
 		int xOffset{};  //offsets are int from "-1" to "1" for checking cells on the right, on the left, below, above selected cell and diagonal cells
 		int yOffset{};
-		int yOffsetDiag{};
-		int xOffsetDiag{};
 
 		xOffset = 1;
 		yOffset = 0;  //checking right cell
-		xOffsetDiag = 1;
-		yOffsetDiag = 1;  //checking diagonal right-below cell
-		checkNearbyCells(arr, row, col, x, y, xOffset, yOffset, xOffsetDiag, yOffsetDiag);
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
+		xOffset = 1;
+		yOffset = 1;  //checking diagonal right-below cell
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
 
 		xOffset = -1;
 		yOffset = 0;  //checking left cell 
-		xOffsetDiag = -1;
-		yOffsetDiag = -1;  //checking diagonal left-above cell
-		checkNearbyCells(arr, row, col, x, y, xOffset, yOffset, xOffsetDiag, yOffsetDiag);
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
+		xOffset = -1;
+		yOffset = -1;  //checking diagonal left-above cell
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
 
 		xOffset = 0;
 		yOffset = -1;  //checking above cell 
-		xOffsetDiag = 1;
-		yOffsetDiag = -1;  //checking diagonal right-above cell
-		checkNearbyCells(arr, row, col, x, y, xOffset, yOffset, xOffsetDiag, yOffsetDiag);
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
+		xOffset = 1;
+		yOffset = -1;  //checking diagonal right-above cell
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
 
 		xOffset = 0;
 		yOffset = 1;  //checking above cell 
-		xOffsetDiag = -1;
-		yOffsetDiag = 1;  //checking diagonal right-above cell
-		checkNearbyCells(arr, row, col, x, y, xOffset, yOffset, xOffsetDiag, yOffsetDiag);
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
+		xOffset = -1;
+		yOffset = 1;  //checking diagonal right-above cell
+		openNearbyCell(arr, row, col, x, y, xOffset, yOffset);
 	}
-	else if (!(*(*(arr + y) + x))->isFlag && !(*(*(arr + y) + x))->isOpen && !(*(*(arr + y) + x))->isBomb && (*(*(arr + y) + x))->content >= 1 && (*(*(arr + y) + x))->content <= 8) (*(*(arr + y) + x))->isOpen = true; //if open field with hint than just make it opened and don't open any other fields
+	else if (!(*(*(arr + y) + x))->isFlag && !(*(*(arr + y) + x))->isOpen && !(*(*(arr + y) + x))->isBomb &&
+		(*(*(arr + y) + x))->content >= 1 && (*(*(arr + y) + x))->content <= 8) (*(*(arr + y) + x))->isOpen = true; //if open field with hint than just make it opened and don't open any other fields
 	else if ((*(*(arr + y) + x))->isBomb)
 	{
 		(*(*(arr + y) + x))->isOpen = true;
-		cout << "BOOOOOOOOOM!!!"; //создать функцию, которая будет выводить сообщение о взрыве на весь экран
-		Sleep(500);
-}
+		showBoom();
+	}
 }
 
-void checkNearbyCells(cell*** arr,  const int row, const int col, const int x, const int y, const int xOffset, const int yOffset, const int xOffsetDiag, const int yOffsetDiag)
+void openNearbyCell(cell*** arr, const int row, const int col, const int x, const int y, const int xOffset, const int yOffset)
 {
 	if ((x + xOffset) <= col - 1 && (x + xOffset) >= 0 && (y + yOffset) >= 0 && (y + yOffset) <= row - 1)  //if cell is in game field 
 	{
@@ -419,21 +491,6 @@ void checkNearbyCells(cell*** arr,  const int row, const int col, const int x, c
 			else if ((*(*(arr + y + yOffset) + x + xOffset))->content >= 1 && (*(*(arr + y + yOffset) + x + xOffset))->content <= 8)  //if is hint 
 			{
 				(*(*(arr + y + yOffset) + x + xOffset))->isOpen = true;  //than just open that cell
-			}
-		}
-
-		if ((y + yOffsetDiag) <= row - 1 && (y + yOffsetDiag) >= 0 && (x + xOffsetDiag) <= col - 1 && (x + xOffsetDiag) >= 0)  //if diagonal cell is in game field 
-		{
-			if (!(*(*(arr + y + yOffsetDiag) + x + xOffsetDiag))->isFlag && !(*(*(arr + y + yOffsetDiag) + x + xOffsetDiag))->isOpen && !(*(*(arr + y + yOffsetDiag) + x + xOffsetDiag))->isBomb)
-			{
-				if ((*(*(arr + y + yOffsetDiag) + x + xOffsetDiag))->content == 0)  //if diagonal right-below cell is empty 
-				{
-					openCell(arr, row, col, x + xOffsetDiag, y + yOffsetDiag); //than call recursion
-				}
-				else if ((*(*(arr + y + yOffsetDiag) + x + xOffsetDiag))->content >= 1 && (*(*(arr + y + yOffsetDiag) + x + xOffsetDiag))->content <= 8)  //if diagonal right-below cell is hint 
-				{
-					(*(*(arr + y + yOffsetDiag) + x + xOffsetDiag))->isOpen = true;  //than open it
-				}
 			}
 		}
 	}
@@ -458,7 +515,170 @@ bool winGame(const cell const* const* const* arr, const int row, const int col)
 			}
 		}
 	}
-
-	cout << "You win!" << endl;
 	return true;
+}
+
+void gameGreeting()
+{
+	cout << endl;
+	cout << setw(75) << "___  ________ _   _  _____ _____  _    _ _____ ___________ ___________ " << endl;
+	cout << setw(75) << "|  \\/  |_   _| \\ | ||  ___/ ___| | |  | |  ___|  ___| ___ \\  ___| ___ \\" << endl;
+	cout << setw(75) << "| .  . | | | |  \\| || |__ \\ `--. | |  | | |__ | |__ | |_/ / |__ | |_/ /" << endl;
+	cout << setw(74) << "| |\\/| | | | | . ` ||  __| `--. \\| |/\\| |  __||  __|| __/ |  __||    /" << endl;
+	cout << setw(74) << "| |  | |_| |_| |\\  || |___/\\__/ /\\  /\\  / |___| |___| |   | |___| |\\ \\" << endl;
+	cout << setw(75) << "\\_|  |_/\\___/\\_| \\_/\\____/\\____/  \\/  \\/\\____/\\____/\\_|   \\____/\\_| \\_|" << endl;
+	cout << endl;
+}
+
+void showBoom()
+{
+	system("cls");
+	cout << endl;
+	cout << endl;
+	cout << setw(60) << "______  _____  ________  ___  _   _   _ " << endl;
+	cout << setw(60) << "| ___ \\|  _  ||  _  |  \\/  | | | | | | |" << endl;
+	cout << setw(60) << "| |_/ /| | | || | | | .  . | | | | | | |" << endl;
+	cout << setw(60) << "| ___ \\| | | || | | | |\\/| | | | | | | |" << endl;
+	cout << setw(60) << "| |_/ /\\ \\_/ /\\ \\_/ / |  | | |_| |_| |_|" << endl;
+	cout << setw(60) << "\\____/  \\___/  \\___/\\_|  |_/ (_) (_) (_)" << endl;
+	Sleep(500);
+}
+
+void showYouWin()
+{
+	cout << endl;
+	cout << endl;
+	cout << setw(65) << "__   _______ _   _   _    _ _____ _   _   _ " << endl;
+	cout << setw(65) << "\\ \\ / /  _  | | | | | |  | |_   _| \\ | | | |" << endl;
+	cout << setw(65) << " \\ V /| | | | | | | | |  | | | | |  \\| | | |" << endl;
+	cout << setw(65) << "  \\ / | | | | | | | | |/\\| | | | | . ` | | |" << endl;
+	cout << setw(65) << "  | | \\ \\_/ / |_| | \\  /\\  /_| |_| |\\  | |_|" << endl;
+	cout << setw(65) << "  \\_/  \\___/ \\___/   \\/  \\/ \\___/\\_| \\_/ (_)" << endl;
+}
+
+bool offerSaveResult(const cell const* const* const* arr, const int x, const int y, const int row, const int col, const int qttOfMoves, const int lifes, const int score)
+{
+	cout << endl;
+
+	bool userChoise = false;
+	char symb{};
+	while (true)
+	{
+		system("cls");
+		showGameField(arr, x, y, row, col, qttOfMoves, lifes, score);
+		showYouWin();
+		cout << endl;
+		cout << setw(75) << "Wish to save your name in Minesweeper Hall of Fame for descendants?\n" << endl;
+
+		if (userChoise)
+		{
+			cout << setw(44) << ">  Yes  <" << endl;
+			cout << setw(44) << "   No    " << endl;
+		}
+		else
+		{
+			cout << setw(44) << "   Yes   " << endl;
+			cout << setw(44) << ">  No   <" << endl;
+		}
+
+		symb = _getch();
+		if (symb == 'w' || symb == 's')
+		{
+			if (userChoise == true) userChoise = false;
+			else if (userChoise == false) userChoise = true;
+		}
+		else if (symb == ' ')
+		{
+			return userChoise;
+		}
+	}
+}
+
+void saveUserScore(const int score, const int row)
+{
+	FILE* f{ nullptr };
+	fopen_s(&f, "files/minesweeperHallOfFame.txt", "a");
+	if (!f)
+	{
+		printf("File was not found!\n");
+		return;
+	}
+	else
+	{
+		user currentUser{};
+		currentUser.nickname = new char[50]{ '\0' };
+		printf("Enter your nickname (without spaces):\n");
+		fscanf_s(stdin, "%s", currentUser.nickname, 50);
+		scanf_s("%*c");
+
+		currentUser.score = score;
+
+		currentUser.fieldSize = row;
+
+		fprintf(f, "%s %d %d\n", currentUser.nickname, currentUser.score, currentUser.fieldSize);
+		printf("Your score was successfully saved!\n");
+
+		delete[] currentUser.nickname;
+	}
+	fclose(f);
+}
+
+void openLastSavedGame(cell***& oldGameField, int& row, int& col)
+{
+	FILE* fb = nullptr;
+	fopen_s(&fb, "files/lastSavedGame.bin", "rb");
+
+	if (!fb)
+	{
+		printf("Error! File was not found.\n");
+	}
+	else
+	{
+		fseek(fb, 0, SEEK_END);
+		int size = ftell(fb);
+		int fieldSqr = size / sizeof(cell);
+		fseek(fb, 0, SEEK_SET);
+
+		int rowNew{};
+		int colNew{};
+		rowNew = (int)sqrt(fieldSqr);
+		colNew = rowNew;
+		cell*** newGameField = nullptr;
+		createCellArr2D(newGameField, rowNew, colNew);
+
+		fread_s(newGameField, size, sizeof(cell), fieldSqr, fb);
+
+		deleteCellArr2D(oldGameField, row, col);
+		oldGameField = newGameField;
+		row = rowNew;
+		col = colNew;
+
+		cout << setw(25) << "Your saved game successfully opened!" << endl;
+		fclose(fb);
+	}
+}
+
+template<typename T>
+void retNum(T& n, const T min, const T max)
+{
+	while (true)
+	{
+		cin >> n;
+		if (!cin)
+		{
+			cout << "Enter number again: ";
+			cin.clear();
+			while (cin.get() != '\n');
+		}
+		else if (n < min || n > max)
+		{
+			cout << "Enter number between " << min << " and " << max << ": ";
+			continue;
+		}
+		else
+		{
+			cin.ignore(10, '\n');
+			return;
+		}
+	}
 }
